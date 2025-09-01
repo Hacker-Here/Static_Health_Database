@@ -3,9 +3,10 @@ import requests
 from flask import Flask, request, jsonify
 
 # Replace these with the raw URLs from your GitHub repository
-SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/refs/heads/main/disease_names.json"
-SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/refs/heads/main/disease_symptoms.json"
-PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/refs/heads/main/disease_preventions.json"
+# Replace these with the correct raw URLs from your GitHub repository
+SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_names.json"
+SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
+PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
 app = Flask(__name__)
 
@@ -56,8 +57,8 @@ def webhook():
     fulfillment_text = "I'm sorry, I couldn't find that information. Please try again."
 
     # Use a fallback intent to check if the disease entity was captured
-    if intent_name == 'DiseaseSymptomsIntent':
-        disease = parameters.get('disease')
+    if intent_name == 'ask_symptoms':
+        disease = parameters.get('disease-name')
         if disease:
             symptoms = find_disease_info(disease, "symptoms")
             if symptoms:
@@ -66,7 +67,7 @@ def webhook():
                 fulfillment_text = f"I don't have information on the symptoms of {disease.title()}."
     
     elif intent_name == 'DiseasePreventionIntent':
-        disease = parameters.get('disease')
+        disease = parameters.get('disease-name')
         if disease:
             prevention = find_disease_info(disease, "prevention")
             if prevention:
