@@ -2,7 +2,6 @@ import json
 import requests
 from flask import Flask, request, jsonify
 
-# Replace these with the raw URLs from your GitHub repository
 # Replace these with the correct raw URLs from your GitHub repository
 SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_names.json"
 SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
@@ -20,7 +19,7 @@ def get_data_from_github(url):
     
     try:
         response = requests.get(url)
-        response.raise_for_status() # Raises an HTTPError if the status code is bad
+        response.raise_for_status()  # Raises an HTTPError if the status code is bad
         data = response.json()
         data_cache[url] = data
         return data
@@ -56,10 +55,13 @@ def webhook():
     
     fulfillment_text = "I'm sorry, I couldn't find that information. Please try again."
 
-    # Use a fallback intent to check if the disease entity was captured
+    # Check for the correct intent name
     if intent_name == 'ask_symptoms':
-        disease = parameters.get('disease-name')
-        if disease:
+        # Get the parameter, which is a list. Check if it's not empty.
+        disease_list = parameters.get('disease-name')
+        if disease_list and len(disease_list) > 0:
+            # Extract the actual string from the list
+            disease = disease_list[0]
             symptoms = find_disease_info(disease, "symptoms")
             if symptoms:
                 fulfillment_text = f"Common symptoms of {disease.title()} are: {', '.join(symptoms)}."
@@ -67,8 +69,11 @@ def webhook():
                 fulfillment_text = f"I don't have information on the symptoms of {disease.title()}."
     
     elif intent_name == 'DiseasePreventionIntent':
-        disease = parameters.get('disease-name')
-        if disease:
+        # Get the parameter, which is a list. Check if it's not empty.
+        disease_list = parameters.get('disease-name')
+        if disease_list and len(disease_list) > 0:
+            # Extract the actual string from the list
+            disease = disease_list[0]
             prevention = find_disease_info(disease, "prevention")
             if prevention:
                 fulfillment_text = f"To prevent {disease.title()}, you can: {', '.join(prevention)}."
