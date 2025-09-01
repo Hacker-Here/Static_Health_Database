@@ -68,7 +68,7 @@ def webhook():
             else:
                 fulfillment_text = f"I don't have information on the symptoms of {disease.title()}."
     
-    elif intent_name == 'DiseasePreventionIntent':
+    elif intent_name == 'ask_preventions':
         # Get the parameter, which is a list. Check if it's not empty.
         disease_list = parameters.get('disease-name')
         if disease_list and len(disease_list) > 0:
