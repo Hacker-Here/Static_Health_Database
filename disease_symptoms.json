@@ -1,0 +1,84 @@
+{
+  "diseases_with_synonyms": [
+    {
+      "name": "Hypertension",
+      "synonyms": ["High Blood Pressure", "HTN", "Elevated Blood Pressure"]
+    },
+    {
+      "name": "Diabetes",
+      "synonyms": ["Diabetes Mellitus", "Sugar Disease", "High Blood Sugar"]
+    },
+    {
+      "name": "Common Cold",
+      "synonyms": ["Cold", "Nasal Congestion", "Upper Respiratory Infection"]
+    },
+    {
+      "name": "Asthma",
+      "synonyms": ["Reactive Airway Disease", "Bronchial Asthma"]
+    },
+    {
+      "name": "Arthritis",
+      "synonyms": ["Joint Inflammation", "Osteoarthritis", "Rheumatoid Arthritis"]
+    },
+    {
+      "name": "Influenza",
+      "synonyms": ["Flu", "Grippe"]
+    },
+    {
+      "name": "Migraine",
+      "synonyms": ["Migraine Headache"]
+    },
+    {
+      "name": "Pneumonia",
+      "synonyms": ["Lung Infection"]
+    },
+    {
+      "name": "Measles",
+      "synonyms": ["Rubeola", "Hard Measles"]
+    },
+    {
+      "name": "Hepatitis",
+      "synonyms": ["Liver Inflammation"]
+    },
+    {
+      "name": "Bronchitis",
+      "synonyms": ["Chest Cold"]
+    },
+    {
+      "name": "Anemia",
+      "synonyms": ["Iron Deficiency Anemia", "Low Blood Count"]
+    },
+    {
+      "name": "Dengue Fever",
+      "synonyms": ["Breakbone Fever"]
+    },
+    {
+      "name": "Typhoid Fever",
+      "synonyms": ["Enteric Fever"]
+    },
+    {
+      "name": "Tuberculosis",
+      "synonyms": ["TB"]
+    },
+    {
+      "name": "Malaria",
+      "synonyms": ["Paludism", "Ague"]
+    },
+    {
+      "name": "Cholera",
+      "synonyms": ["Asiatic Cholera"]
+    },
+    {
+      "name": "Conjunctivitis",
+      "synonyms": ["Pink Eye"]
+    },
+    {
+      "name": "Tetanus",
+      "synonyms": ["Lockjaw"]
+    },
+    {
+      "name": "Eczema",
+      "synonyms": ["Atopic Dermatitis"]
+    }
+  ]
+}
