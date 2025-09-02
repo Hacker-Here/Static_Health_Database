@@ -11,7 +11,7 @@ SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Data
 PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
 # ---------- WHO OUTBREAKS PAGE ----------
-WHO_OUTBREAKS_URL = "https://www.who.int/emergencies/disease-outbreak-news"
+WHO_OUTBREAKS_URL = "https://www.who.int/api/emergencies/diseaseoutbreaknews"
 
 # Cache for static JSON data
 data_cache = {}
