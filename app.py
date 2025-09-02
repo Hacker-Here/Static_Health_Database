@@ -9,8 +9,8 @@ SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Data
 SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
 PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
-# ---------- WHO OUTBREAKS FEED ----------
-WHO_OUTBREAKS_URL = "https://www.who.int/feeds/entity/csr/don/en/rss.xml"
+# ---------- WHO OUTBREAKS API ----------
+WHO_OUTBREAKS_URL = "https://www.who.int/api/emergencies/diseaseoutbreaknews"
 
 # Cache for static JSON data
 data_cache = {}
@@ -47,22 +47,14 @@ def find_disease_info(disease_name, info_type):
     return None
 
 def get_who_outbreaks():
-    """Fetch latest WHO outbreak RSS feed and return parsed items."""
+    """Fetch latest WHO Disease Outbreak News items from WHO API."""
     try:
-        import xml.etree.ElementTree as ET
-        response = requests.get(WHO_OUTBREAKS_URL)
+        response = requests.get(WHO_OUTBREAKS_URL, timeout=10)
         response.raise_for_status()
-        root = ET.fromstring(response.content)
-        items = []
-        for item in root.findall(".//item"):
-            items.append({
-                "Title": item.find("title").text,
-                "Link": item.find("link").text,
-                "PublicationDate": item.find("pubDate").text
-            })
-        return items
+        data = response.json()
+        return data.get("items", data)  # "items" contains the outbreak list
     except Exception as e:
-        print(f"Error fetching WHO feed: {e}")
+        print(f"Error fetching WHO outbreak data: {e}")
         return None
 
 # ================== WEBHOOK ==================
@@ -109,12 +101,12 @@ def webhook():
             if disease:  # Disease-specific outbreaks
                 filtered = [i for i in items if disease.lower() in i.get("Title", "").lower()]
                 if filtered:
-                    lines = [f"- {i['Title']} ({i['PublicationDate'][:16]})" for i in filtered[:3]]
+                    lines = [f"- {i['Title']} ({i.get('PublicationDate', '')[:10]})" for i in filtered[:3]]
                     reply = f"🌍 Latest {disease.title()} Outbreaks:\n" + "\n".join(lines)
                 else:
                     reply = f"No recent WHO outbreak news found for {disease.title()}."
             else:  # General outbreaks
-                lines = [f"- {i['Title']} ({i['PublicationDate'][:16]})" for i in items[:3]]
+                lines = [f"- {i['Title']} ({i.get('PublicationDate', '')[:10]})" for i in items[:3]]
                 reply = "🌍 Latest WHO Outbreaks:\n" + "\n".join(lines)
 
     return jsonify({'fulfillmentText': reply})
