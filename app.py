@@ -1,6 +1,7 @@
 import json
 import requests
 from flask import Flask, request, jsonify
+from bs4 import BeautifulSoup  # ✅ Added for WHO scraping
 
 app = Flask(__name__)
 
@@ -9,9 +10,8 @@ SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Data
 SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
 PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
-# ---------- WHO OUTBREAKS API ----------
-WHO_OUTBREAKS_URL = "https://www.who.int/api/emergencies/diseaseoutbreaknews"
-
+# ---------- WHO OUTBREAKS PAGE ----------
+WHO_OUTBREAKS_URL = "https://www.who.int/emergencies/disease-outbreak-news"
 
 # Cache for static JSON data
 data_cache = {}
@@ -48,12 +48,31 @@ def find_disease_info(disease_name, info_type):
     return None
 
 def get_who_outbreaks():
-    """Fetch latest WHO Disease Outbreak News items from WHO API."""
+    """Scrape WHO Disease Outbreak News HTML page for latest items."""
     try:
-        response = requests.get(WHO_OUTBREAKS_URL, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("items", data)  # "items" contains the outbreak list
+        resp = requests.get(WHO_OUTBREAKS_URL, timeout=10)
+        resp.raise_for_status()
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        articles = soup.find_all("div", class_="list-view--item vertical-list-item")
+
+        items = []
+        for art in articles[:10]:  # top 10 latest
+            title_tag = art.find("a")
+            date_tag = art.find("div", class_="timestamp")
+
+            title = title_tag.get_text(strip=True) if title_tag else "No title"
+            link = "https://www.who.int" + title_tag["href"] if title_tag else ""
+            date = date_tag.get_text(strip=True) if date_tag else ""
+
+            items.append({
+                "Title": title,
+                "Link": link,
+                "PublicationDate": date
+            })
+
+        return items
+
     except Exception as e:
         print(f"Error fetching WHO outbreak data: {e}")
         return None
@@ -102,12 +121,12 @@ def webhook():
             if disease:  # Disease-specific outbreaks
                 filtered = [i for i in items if disease.lower() in i.get("Title", "").lower()]
                 if filtered:
-                    lines = [f"- {i['Title']} ({i.get('PublicationDate', '')[:10]})" for i in filtered[:3]]
+                    lines = [f"- {i['Title']} ({i.get('PublicationDate', '')})\n🔗 {i['Link']}" for i in filtered[:3]]
                     reply = f"🌍 Latest {disease.title()} Outbreaks:\n" + "\n".join(lines)
                 else:
                     reply = f"No recent WHO outbreak news found for {disease.title()}."
             else:  # General outbreaks
-                lines = [f"- {i['Title']} ({i.get('PublicationDate', '')[:10]})" for i in items[:3]]
+                lines = [f"- {i['Title']} ({i.get('PublicationDate', '')})\n🔗 {i['Link']}" for i in items[:3]]
                 reply = "🌍 Latest WHO Outbreaks:\n" + "\n".join(lines)
 
     return jsonify({'fulfillmentText': reply})
