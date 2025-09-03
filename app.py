@@ -133,3 +133,7 @@ def webhook():
 # ================== MAIN ==================
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
+
+print("DEBUG: WHO outbreak items:", items[:5])
+print("DEBUG: Looking for disease:", disease.lower() if disease else None)
+
