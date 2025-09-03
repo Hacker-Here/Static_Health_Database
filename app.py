@@ -1,7 +1,6 @@
 import json
 import requests
 from flask import Flask, request, jsonify
-from bs4 import BeautifulSoup  # For parsing HealthMap RSS
 
 app = Flask(__name__)
 
@@ -10,8 +9,8 @@ SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Data
 SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
 PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
-# ---------- HEALTHMAP FEED ----------
-HEALTHMAP_URL = "https://www.healthmap.org/rss/globalalertsfeed"  # GeoRSS feed
+# ---------- WHO OUTBREAKS API ----------
+WHO_OUTBREAKS_URL = "https://www.who.int/api/news/outbreaks"
 
 # Cache for static JSON data
 data_cache = {}
@@ -49,31 +48,31 @@ def find_disease_info(disease_name, info_type):
     return None
 
 
-def get_healthmap_outbreaks():
-    """Fetch and parse HealthMap RSS feed for latest outbreak news."""
+def get_who_outbreaks():
+    """Fetch and parse WHO Outbreaks API."""
     try:
-        resp = requests.get(HEALTHMAP_URL, timeout=10)
+        resp = requests.get(WHO_OUTBREAKS_URL, timeout=10)
         resp.raise_for_status()
+        data = resp.json()
 
-        soup = BeautifulSoup(resp.text, "xml")  # Parse RSS (XML)
         items = []
-        for item in soup.find_all("item")[:10]:  # top 10 latest
-            title = item.title.get_text(strip=True) if item.title else "No title"
-            link = item.link.get_text(strip=True) if item.link else ""
-            pub_date = item.pubDate.get_text(strip=True) if item.pubDate else ""
-            description = item.description.get_text(strip=True) if item.description else ""
+        for entry in data.get("value", [])[:10]:  # Take top 10
+            title = entry.get("Title", "No title")
+            link = entry.get("ItemDefaultUrl", "")
+            pub_date = entry.get("PublicationDate", "")
+            summary = entry.get("Summary", "")
 
             items.append({
                 "Title": title,
                 "Link": link,
                 "PublicationDate": pub_date,
-                "Description": description
+                "Summary": summary
             })
 
         return items
 
     except Exception as e:
-        print(f"Error fetching HealthMap outbreak data: {e}")
+        print(f"Error fetching WHO outbreak data: {e}")
         return None
 
 # ================== WEBHOOK ==================
@@ -107,26 +106,26 @@ def webhook():
             else:
                 reply = f"I don't have information on prevention measures for {disease.title()}."
 
-    # --------- Dynamic Data: HealthMap Outbreaks ---------
-    elif intent in ['healthmap_outbreaks.general', 'healthmap_outbreaks.specific']:
+    # --------- Dynamic Data: WHO Outbreaks ---------
+    elif intent in ['who_outbreaks.general', 'who_outbreaks.specific']:
         disease = None
         if params.get('disease-name'):
             disease = params['disease-name'][0]
 
-        items = get_healthmap_outbreaks()
+        items = get_who_outbreaks()
         if not items:
-            reply = "⚠️ Unable to fetch outbreak data from HealthMap right now."
+            reply = "⚠️ Unable to fetch outbreak data from WHO right now."
         else:
             if disease:  # Disease-specific outbreaks
                 filtered = [i for i in items if disease.lower() in i.get("Title", "").lower()]
                 if filtered:
                     lines = [f"- {i['Title']} ({i.get('PublicationDate', '')})\n🔗 {i['Link']}" for i in filtered[:3]]
-                    reply = f"🌍 Latest {disease.title()} Outbreaks (HealthMap):\n" + "\n".join(lines)
+                    reply = f"🌍 Latest {disease.title()} Outbreaks (WHO):\n" + "\n".join(lines)
                 else:
-                    reply = f"No recent HealthMap outbreak news found for {disease.title()}."
+                    reply = f"No recent WHO outbreak news found for {disease.title()}."
             else:  # General outbreaks
                 lines = [f"- {i['Title']} ({i.get('PublicationDate', '')})\n🔗 {i['Link']}" for i in items[:3]]
-                reply = "🌍 Latest HealthMap Outbreaks:\n" + "\n".join(lines)
+                reply = "🌍 Latest WHO Outbreaks:\n" + "\n".join(lines)
 
     return jsonify({'fulfillmentText': reply})
 
