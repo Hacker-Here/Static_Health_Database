@@ -62,9 +62,13 @@ def get_who_outbreak_links():
         driver = webdriver.Chrome(options=options)
         driver.get(WHO_OUTBREAKS_URL)
 
-        # Each outbreak is inside an <a> with "list-view--item" parent
+        # Wait for JS to load
+        driver.implicitly_wait(10)
+
+        # Correct selector
+        elements = driver.find_elements(By.CSS_SELECTOR, "a.sf-list-vertical__item-title")
+
         links = []
-        elements = driver.find_elements(By.CSS_SELECTOR, "a.list-view--item__title")
         for el in elements[:10]:  # top 10
             links.append({
                 "Title": el.text.strip(),
@@ -77,6 +81,7 @@ def get_who_outbreak_links():
     except Exception as e:
         print(f"Error scraping WHO outbreak data: {e}")
         return None
+
 
 
 # ================== WEBHOOK ==================
