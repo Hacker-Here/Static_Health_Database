@@ -47,34 +47,25 @@ def find_disease_info(disease_name, info_type):
                     return item.get("prevention_measures", [])
     return None
 
-def scrape_who_outbreaks():
-    """Scrape WHO Outbreak News site for latest articles."""
+def scrape_who_outbreak_links():
+    """Scrape WHO outbreak news page and return only links."""
     try:
         resp = requests.get(WHO_OUTBREAKS_PAGE, timeout=10)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Each outbreak news item is inside "list-view--item" div
         articles = soup.find_all("div", class_="list-view--item vertical-list-item")
-        items = []
+        links = []
 
-        for art in articles[:10]:  # Get top 10
+        for art in articles[:10]:  # Top 10 outbreak links
             title_tag = art.find("a")
-            date_tag = art.find("div", class_="timestamp")
+            if title_tag and title_tag.get("href"):
+                link = "https://www.who.int" + title_tag["href"]
+                links.append(link)
 
-            title = title_tag.get_text(strip=True) if title_tag else "No title"
-            link = "https://www.who.int" + title_tag["href"] if title_tag else ""
-            date = date_tag.get_text(strip=True) if date_tag else ""
-
-            items.append({
-                "Title": title,
-                "Link": link,
-                "PublicationDate": date
-            })
-
-        return items
+        return links
     except Exception as e:
-        print(f"Error scraping WHO outbreak data: {e}")
+        print(f"Error scraping WHO outbreak links: {e}")
         return []
 
 # ================== WEBHOOK ==================
@@ -108,26 +99,13 @@ def webhook():
             else:
                 reply = f"I don't have information on prevention measures for {disease.title()}."
 
-    # --------- Dynamic Data: WHO Outbreaks (Scraping only) ---------
-    elif intent in ['disease_outbreak.general', 'disease_outbreaks.specific']:
-        disease = None
-        if params.get('disease-name'):
-            disease = params['disease-name'][0]  # Extract disease name if provided
-
-        items = scrape_who_outbreaks()
-        if not items:
-            reply = "⚠️ Unable to fetch outbreak data from WHO right now."
+    # --------- Dynamic Data: WHO Outbreak Links ---------
+    elif intent == 'disease_outbreak.general':
+        links = scrape_who_outbreak_links()
+        if links:
+            reply = "🌍 Latest WHO Outbreak News Links:\n" + "\n".join(links)
         else:
-            if disease:  # Disease-specific outbreaks
-                filtered = [i for i in items if disease.lower() in i.get("Title", "").lower()]
-                if filtered:
-                    lines = [f"- {i['Title']} ({i.get('PublicationDate', '')})\n🔗 {i['Link']}" for i in filtered[:3]]
-                    reply = f"🌍 Latest {disease.title()} Outbreaks:\n" + "\n".join(lines)
-                else:
-                    reply = f"No recent WHO outbreak news found for {disease.title()}."
-            else:  # General outbreaks
-                lines = [f"- {i['Title']} ({i.get('PublicationDate', '')})\n🔗 {i['Link']}" for i in items[:3]]
-                reply = "🌍 Latest WHO Outbreaks:\n" + "\n".join(lines)
+            reply = "⚠️ Unable to fetch outbreak links from WHO right now."
 
     return jsonify({'fulfillmentText': reply})
 
