@@ -1,9 +1,5 @@
-import json
 import requests
 from flask import Flask, request, jsonify
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
 
 app = Flask(__name__)
 
@@ -12,8 +8,16 @@ SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Data
 SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
 PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
-# WHO Outbreak page
-WHO_OUTBREAKS_URL = "https://www.who.int/emergencies/disease-outbreak-news"
+# ---------- WHO Outbreak API ----------
+WHO_API_URL = (
+    "https://www.who.int/api/emergencies/diseaseoutbreaknews"
+    "?sf_provider=dynamicProvider372&sf_culture=en"
+    "&$orderby=PublicationDateAndTime%20desc"
+    "&$expand=EmergencyEvent"
+    "&$select=Title,TitleSuffix,OverrideTitle,UseOverrideTitle,regionscountries,"
+    "ItemDefaultUrl,FormattedDate,PublicationDateAndTime"
+    "&%24format=json&%24top=10&%24count=true"
+)
 
 # Cache for static JSON data
 data_cache = {}
@@ -24,12 +28,12 @@ def get_data_from_github(url):
     if url in data_cache:
         return data_cache[url]
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         data_cache[url] = data
         return data
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"Error fetching from GitHub: {e}")
         return None
 
@@ -51,37 +55,27 @@ def find_disease_info(disease_name, info_type):
     return None
 
 
-def get_who_outbreak_links():
-    """Use Selenium to scrape outbreak news links from WHO DON page."""
+def get_who_outbreak_data():
+    """Fetch outbreak news directly from WHO API."""
     try:
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
+        response = requests.get(WHO_API_URL, timeout=10)
+        response.raise_for_status()
+        data = response.json()
 
-        driver = webdriver.Chrome(options=options)
-        driver.get(WHO_OUTBREAKS_URL)
+        if "value" not in data or not data["value"]:
+            return None
 
-        # Wait for JS to load
-        driver.implicitly_wait(10)
+        outbreaks = []
+        for item in data["value"][:5]:  # only latest 5
+            title = item.get("OverrideTitle") or item.get("Title")
+            date = item.get("FormattedDate", "Unknown date")
+            url = "https://www.who.int" + item.get("ItemDefaultUrl", "")
+            outbreaks.append(f"🦠 {title} ({date})\n🔗 {url}")
 
-        # Correct selector
-        elements = driver.find_elements(By.CSS_SELECTOR, "a.sf-list-vertical__item-title")
-
-        links = []
-        for el in elements[:10]:  # top 10
-            links.append({
-                "Title": el.text.strip(),
-                "Link": el.get_attribute("href")
-            })
-
-        driver.quit()
-        return links
-
+        return outbreaks
     except Exception as e:
-        print(f"Error scraping WHO outbreak data: {e}")
+        print(f"Error fetching WHO outbreak data: {e}")
         return None
-
 
 
 # ================== WEBHOOK ==================
@@ -117,12 +111,11 @@ def webhook():
 
     # --------- Dynamic Data: WHO Outbreaks ---------
     elif intent == 'disease_outbreak.general':
-        items = get_who_outbreak_links()
-        if not items:
+        outbreaks = get_who_outbreak_data()
+        if not outbreaks:
             reply = "⚠️ Unable to fetch outbreak data right now."
         else:
-            lines = [f"- {i['Title']}\n🔗 {i['Link']}" for i in items]
-            reply = "🌍 Latest WHO Outbreak News:\n" + "\n".join(lines)
+            reply = "🌍 Latest WHO Outbreak News:\n\n" + "\n\n".join(outbreaks)
 
     return jsonify({'fulfillmentText': reply})
 
