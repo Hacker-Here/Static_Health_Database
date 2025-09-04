@@ -1,7 +1,7 @@
 import json
 import requests
 from flask import Flask, request, jsonify
-from bs4 import BeautifulSoup  # for fallback scraping
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
@@ -10,9 +10,8 @@ SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Data
 SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
 PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
-# ---------- WHO OUTBREAK SOURCES ----------
-WHO_API_URL = "https://www.who.int/api/news/outbreaks"
-WHO_HTML_URL = "https://www.who.int/emergencies/disease-outbreak-news"
+# WHO Outbreak News Page
+WHO_OUTBREAKS_PAGE = "https://www.who.int/emergencies/disease-outbreak-news"
 
 # Cache for static JSON data
 data_cache = {}
@@ -23,12 +22,12 @@ def get_data_from_github(url):
     if url in data_cache:
         return data_cache[url]
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         data_cache[url] = data
         return data
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"Error fetching from GitHub: {e}")
         return None
 
@@ -48,36 +47,18 @@ def find_disease_info(disease_name, info_type):
                     return item.get("prevention_measures", [])
     return None
 
-def get_who_outbreaks():
-    """Try WHO JSON API first, fallback to scraping HTML page."""
+def scrape_who_outbreaks():
+    """Scrape WHO Outbreak News site for latest articles."""
     try:
-        resp = requests.get(WHO_API_URL, timeout=10)
+        resp = requests.get(WHO_OUTBREAKS_PAGE, timeout=10)
         resp.raise_for_status()
-        data = resp.json()
-
-        items = []
-        for entry in data.get("value", [])[:10]:
-            items.append({
-                "Title": entry.get("Title", "No title"),
-                "Link": "https://www.who.int" + entry.get("ItemDefaultUrl", ""),
-                "PublicationDate": entry.get("FormattedDate", "")
-            })
-        if items:
-            print("DEBUG: Using WHO API data")
-            return items
-    except Exception as e:
-        print(f"Error fetching WHO API: {e}")
-
-    # ---------- Fallback: scrape HTML ----------
-    try:
-        resp = requests.get(WHO_HTML_URL, timeout=10)
-        resp.raise_for_status()
-
         soup = BeautifulSoup(resp.text, "html.parser")
-        articles = soup.find_all("div", class_="list-view--item vertical-list-item")
 
+        # Each outbreak news item is inside "list-view--item" div
+        articles = soup.find_all("div", class_="list-view--item vertical-list-item")
         items = []
-        for art in articles[:10]:
+
+        for art in articles[:10]:  # Get top 10
             title_tag = art.find("a")
             date_tag = art.find("div", class_="timestamp")
 
@@ -91,13 +72,10 @@ def get_who_outbreaks():
                 "PublicationDate": date
             })
 
-        if items:
-            print("DEBUG: Using WHO HTML scraped data")
-            return items
+        return items
     except Exception as e:
-        print(f"Error scraping WHO outbreaks page: {e}")
-
-    return None
+        print(f"Error scraping WHO outbreak data: {e}")
+        return []
 
 # ================== WEBHOOK ==================
 @app.route('/webhook', methods=['POST'])
@@ -130,13 +108,13 @@ def webhook():
             else:
                 reply = f"I don't have information on prevention measures for {disease.title()}."
 
-    # --------- Dynamic Data: WHO Outbreaks ---------
+    # --------- Dynamic Data: WHO Outbreaks (Scraping only) ---------
     elif intent in ['disease_outbreak.general', 'disease_outbreaks.specific']:
         disease = None
         if params.get('disease-name'):
             disease = params['disease-name'][0]  # Extract disease name if provided
 
-        items = get_who_outbreaks()
+        items = scrape_who_outbreaks()
         if not items:
             reply = "⚠️ Unable to fetch outbreak data from WHO right now."
         else:
@@ -146,7 +124,7 @@ def webhook():
                     lines = [f"- {i['Title']} ({i.get('PublicationDate', '')})\n🔗 {i['Link']}" for i in filtered[:3]]
                     reply = f"🌍 Latest {disease.title()} Outbreaks:\n" + "\n".join(lines)
                 else:
-                    reply = f"✅ I checked WHO’s Disease Outbreak News, but there are no recent reports for {disease.title()}."
+                    reply = f"No recent WHO outbreak news found for {disease.title()}."
             else:  # General outbreaks
                 lines = [f"- {i['Title']} ({i.get('PublicationDate', '')})\n🔗 {i['Link']}" for i in items[:3]]
                 reply = "🌍 Latest WHO Outbreaks:\n" + "\n".join(lines)
