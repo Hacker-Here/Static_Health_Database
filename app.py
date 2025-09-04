@@ -131,7 +131,7 @@ def webhook():
                 reply = f"I don't have information on prevention measures for {disease.title()}."
 
     # --------- Dynamic Data: WHO Outbreaks ---------
-    elif intent in ['disease_outbreaks.general', 'disease_outbreaks.specific']:
+    elif intent in ['disease_outbreak.general', 'disease_outbreaks.specific']:
         disease = None
         if params.get('disease-name'):
             disease = params['disease-name'][0]  # Extract disease name if provided
