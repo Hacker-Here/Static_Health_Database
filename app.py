@@ -1,7 +1,9 @@
 import json
 import requests
 from flask import Flask, request, jsonify
-from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 
 app = Flask(__name__)
 
@@ -10,8 +12,8 @@ SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Data
 SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
 PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
-# WHO Outbreak News Page
-WHO_OUTBREAKS_PAGE = "https://www.who.int/emergencies/disease-outbreak-news"
+# WHO Outbreak page
+WHO_OUTBREAKS_URL = "https://www.who.int/emergencies/disease-outbreak-news"
 
 # Cache for static JSON data
 data_cache = {}
@@ -22,14 +24,15 @@ def get_data_from_github(url):
     if url in data_cache:
         return data_cache[url]
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url)
         response.raise_for_status()
         data = response.json()
         data_cache[url] = data
         return data
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         print(f"Error fetching from GitHub: {e}")
         return None
+
 
 def find_disease_info(disease_name, info_type):
     """Look up static disease info (symptoms or prevention)."""
@@ -47,26 +50,34 @@ def find_disease_info(disease_name, info_type):
                     return item.get("prevention_measures", [])
     return None
 
-def scrape_who_outbreak_links():
-    """Scrape WHO outbreak news page and return only links."""
+
+def get_who_outbreak_links():
+    """Use Selenium to scrape outbreak news links from WHO DON page."""
     try:
-        resp = requests.get(WHO_OUTBREAKS_PAGE, timeout=10)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
 
-        articles = soup.find_all("div", class_="list-view--item vertical-list-item")
+        driver = webdriver.Chrome(options=options)
+        driver.get(WHO_OUTBREAKS_URL)
+
+        # Each outbreak is inside an <a> with "list-view--item" parent
         links = []
+        elements = driver.find_elements(By.CSS_SELECTOR, "a.list-view--item__title")
+        for el in elements[:10]:  # top 10
+            links.append({
+                "Title": el.text.strip(),
+                "Link": el.get_attribute("href")
+            })
 
-        for art in articles[:10]:  # Top 10 outbreak links
-            title_tag = art.find("a")
-            if title_tag and title_tag.get("href"):
-                link = "https://www.who.int" + title_tag["href"]
-                links.append(link)
-
+        driver.quit()
         return links
+
     except Exception as e:
-        print(f"Error scraping WHO outbreak links: {e}")
-        return []
+        print(f"Error scraping WHO outbreak data: {e}")
+        return None
+
 
 # ================== WEBHOOK ==================
 @app.route('/webhook', methods=['POST'])
@@ -99,15 +110,17 @@ def webhook():
             else:
                 reply = f"I don't have information on prevention measures for {disease.title()}."
 
-    # --------- Dynamic Data: WHO Outbreak Links ---------
+    # --------- Dynamic Data: WHO Outbreaks ---------
     elif intent == 'disease_outbreak.general':
-        links = scrape_who_outbreak_links()
-        if links:
-            reply = "🌍 Latest WHO Outbreak News Links:\n" + "\n".join(links)
+        items = get_who_outbreak_links()
+        if not items:
+            reply = "⚠️ Unable to fetch outbreak data right now."
         else:
-            reply = "⚠️ Unable to fetch outbreak links from WHO right now."
+            lines = [f"- {i['Title']}\n🔗 {i['Link']}" for i in items]
+            reply = "🌍 Latest WHO Outbreak News:\n" + "\n".join(lines)
 
     return jsonify({'fulfillmentText': reply})
+
 
 # ================== MAIN ==================
 if __name__ == '__main__':
