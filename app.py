@@ -1,5 +1,7 @@
+import os
 import requests
 from flask import Flask, request, jsonify
+from twilio.twiml.messaging_response import MessagingResponse
 
 app = Flask(__name__)
 
@@ -78,14 +80,36 @@ def get_who_outbreak_data():
         return None
 
 
-# ================== WEBHOOK ==================
+# ================== WEBHOOK (Dialogflow + Twilio) ==================
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    reply = "I'm sorry, I couldn't find that information. Please try again."
+
+    # ---------- Check if request is from Twilio (form-data) ----------
+    if request.content_type != "application/json":
+        user_message = request.form.get("Body", "").strip().lower()
+
+        if "symptom" in user_message:
+            reply = "Please provide a disease name to get its symptoms."
+        elif "prevent" in user_message:
+            reply = "Please provide a disease name to get its prevention measures."
+        elif "outbreak" in user_message or "disease" in user_message:
+            outbreaks = get_who_outbreak_data()
+            if not outbreaks:
+                reply = "⚠️ Unable to fetch outbreak data right now."
+            else:
+                reply = "🌍 Latest WHO Outbreak News:\n\n" + "\n\n".join(outbreaks[:3])
+        else:
+            reply = "Hi! 👋 You can ask me about disease symptoms, prevention, or latest outbreaks."
+
+        resp = MessagingResponse()
+        resp.message(reply)
+        return str(resp)
+
+    # ---------- Otherwise it's Dialogflow (JSON) ----------
     req = request.get_json(silent=True, force=True)
     intent = req.get('queryResult', {}).get('intent', {}).get('displayName', '')
     params = req.get('queryResult', {}).get('parameters', {})
-
-    reply = "I'm sorry, I couldn't find that information. Please try again."
 
     # --------- Static Data: Symptoms ---------
     if intent == 'ask_symptoms':
