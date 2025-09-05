@@ -1,5 +1,4 @@
-Flask
+flask
 requests
+twilio
 gunicorn
-beautifulsoup4
-selenium
