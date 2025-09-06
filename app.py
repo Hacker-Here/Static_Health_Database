@@ -1,9 +1,8 @@
-import json
-import requests
+import os, json, requests
 from flask import Flask, request, jsonify, Response
 from twilio.twiml.messaging_response import MessagingResponse
-from google.cloud import dialogflow as dialogflow
-import os
+from google.cloud import dialogflow_v2 as dialogflow
+from google.oauth2 import service_account
 
 app = Flask(__name__)
 
@@ -15,13 +14,20 @@ PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Da
 # ---------- WHO OUTBREAKS API ----------
 WHO_OUTBREAKS_URL = "https://www.who.int/api/emergencies/diseaseoutbreaknews"
 
-# Cache for static JSON data
-data_cache = {}
-
-# ---------- Dialogflow Config ----------
+# ---------- GOOGLE DIALOGFLOW CONFIG ----------
 PROJECT_ID = os.environ.get("DIALOGFLOW_PROJECT_ID", "")
 LANGUAGE_CODE = "en-US"
-session_client = dialogflow.SessionsClient()
+
+credentials = None
+if "GOOGLE_CREDS_JSON" in os.environ:
+    creds_dict = json.loads(os.environ["GOOGLE_CREDS_JSON"])
+    credentials = service_account.Credentials.from_service_account_info(creds_dict)
+    session_client = dialogflow.SessionsClient(credentials=credentials)
+else:
+    raise Exception("❌ GOOGLE_CREDS_JSON not found in environment variables!")
+
+# Cache for static JSON data
+data_cache = {}
 
 # ================== HELPERS ==================
 def get_data_from_github(url):
@@ -132,7 +138,9 @@ def sms_reply():
     query_input = dialogflow.QueryInput(text=text_input)
 
     try:
-        response = session_client.detect_intent(request={"session": session, "query_input": query_input})
+        response = session_client.detect_intent(
+            request={"session": session, "query_input": query_input}
+        )
         reply = response.query_result.fulfillment_text or "Sorry, I didn’t understand that."
     except Exception as e:
         print(f"Dialogflow error: {e}")
