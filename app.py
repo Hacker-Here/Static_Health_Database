@@ -1,7 +1,9 @@
-import os
+import json
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from twilio.twiml.messaging_response import MessagingResponse
+from google.cloud import dialogflow_v2 as dialogflow
+import os
 
 app = Flask(__name__)
 
@@ -10,19 +12,16 @@ SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Data
 SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
 PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
-# ---------- WHO Outbreak API ----------
-WHO_API_URL = (
-    "https://www.who.int/api/emergencies/diseaseoutbreaknews"
-    "?sf_provider=dynamicProvider372&sf_culture=en"
-    "&$orderby=PublicationDateAndTime%20desc"
-    "&$expand=EmergencyEvent"
-    "&$select=Title,TitleSuffix,OverrideTitle,UseOverrideTitle,regionscountries,"
-    "ItemDefaultUrl,FormattedDate,PublicationDateAndTime"
-    "&%24format=json&%24top=10&%24count=true"
-)
+# ---------- WHO OUTBREAKS API ----------
+WHO_OUTBREAKS_URL = "https://www.who.int/api/emergencies/diseaseoutbreaknews"
 
 # Cache for static JSON data
 data_cache = {}
+
+# ---------- Dialogflow Config ----------
+PROJECT_ID = os.environ.get("DIALOGFLOW_PROJECT_ID", "")
+LANGUAGE_CODE = "en-US"
+session_client = dialogflow.SessionsClient()
 
 # ================== HELPERS ==================
 def get_data_from_github(url):
@@ -30,15 +29,14 @@ def get_data_from_github(url):
     if url in data_cache:
         return data_cache[url]
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url)
         response.raise_for_status()
         data = response.json()
         data_cache[url] = data
         return data
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         print(f"Error fetching from GitHub: {e}")
         return None
-
 
 def find_disease_info(disease_name, info_type):
     """Look up static disease info (symptoms or prevention)."""
@@ -56,60 +54,25 @@ def find_disease_info(disease_name, info_type):
                     return item.get("prevention_measures", [])
     return None
 
-
-def get_who_outbreak_data():
-    """Fetch outbreak news directly from WHO API."""
+def get_who_outbreaks():
+    """Fetch latest WHO Disease Outbreak News items from WHO API."""
     try:
-        response = requests.get(WHO_API_URL, timeout=10)
+        response = requests.get(WHO_OUTBREAKS_URL, timeout=10)
         response.raise_for_status()
         data = response.json()
-
-        if "value" not in data or not data["value"]:
-            return None
-
-        outbreaks = []
-        for item in data["value"][:5]:  # only latest 5
-            title = item.get("OverrideTitle") or item.get("Title")
-            date = item.get("FormattedDate", "Unknown date")
-            url = "https://www.who.int" + item.get("ItemDefaultUrl", "")
-            outbreaks.append(f"🦠 {title} ({date})\n🔗 {url}")
-
-        return outbreaks
+        return data.get("items", data)  # "items" contains the outbreak list
     except Exception as e:
         print(f"Error fetching WHO outbreak data: {e}")
         return None
 
-
-# ================== WEBHOOK (Dialogflow + Twilio) ==================
+# ================== DIALOGFLOW WEBHOOK ==================
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    reply = "I'm sorry, I couldn't find that information. Please try again."
-
-    # ---------- Check if request is from Twilio (form-data) ----------
-    if request.content_type != "application/json":
-        user_message = request.form.get("Body", "").strip().lower()
-
-        if "symptom" in user_message:
-            reply = "Please provide a disease name to get its symptoms."
-        elif "prevent" in user_message:
-            reply = "Please provide a disease name to get its prevention measures."
-        elif "outbreak" in user_message or "disease" in user_message:
-            outbreaks = get_who_outbreak_data()
-            if not outbreaks:
-                reply = "⚠️ Unable to fetch outbreak data right now."
-            else:
-                reply = "🌍 Latest WHO Outbreak News:\n\n" + "\n\n".join(outbreaks[:3])
-        else:
-            reply = "Hi! 👋 You can ask me about disease symptoms, prevention, or latest outbreaks."
-
-        resp = MessagingResponse()
-        resp.message(reply)
-        return str(resp)
-
-    # ---------- Otherwise it's Dialogflow (JSON) ----------
     req = request.get_json(silent=True, force=True)
     intent = req.get('queryResult', {}).get('intent', {}).get('displayName', '')
     params = req.get('queryResult', {}).get('parameters', {})
+
+    reply = "I'm sorry, I couldn't find that information. Please try again."
 
     # --------- Static Data: Symptoms ---------
     if intent == 'ask_symptoms':
@@ -134,15 +97,51 @@ def webhook():
                 reply = f"I don't have information on prevention measures for {disease.title()}."
 
     # --------- Dynamic Data: WHO Outbreaks ---------
-    elif intent == 'disease_outbreak.general':
-        outbreaks = get_who_outbreak_data()
-        if not outbreaks:
-            reply = "⚠️ Unable to fetch outbreak data right now."
+    elif intent in ['disease_outbreaks.general', 'disease_outbreaks.specific']:
+        disease = None
+        if params.get('disease-name'):
+            disease = params['disease-name'][0]  # Extract disease name if provided
+
+        items = get_who_outbreaks()
+        if not items:
+            reply = "⚠️ Unable to fetch outbreak data from WHO right now."
         else:
-            reply = "🌍 Latest WHO Outbreak News:\n\n" + "\n\n".join(outbreaks)
+            if disease:  # Disease-specific outbreaks
+                filtered = [i for i in items if disease.lower() in i.get("Title", "").lower()]
+                if filtered:
+                    lines = [f"- {i['Title']} ({i.get('PublicationDate', '')[:10]})" for i in filtered[:3]]
+                    reply = f"🌍 Latest {disease.title()} Outbreaks:\n" + "\n".join(lines)
+                else:
+                    reply = f"No recent WHO outbreak news found for {disease.title()}."
+            else:  # General outbreaks
+                lines = [f"- {i['Title']} ({i.get('PublicationDate', '')[:10]})" for i in items[:3]]
+                reply = "🌍 Latest WHO Outbreaks:\n" + "\n".join(lines)
 
     return jsonify({'fulfillmentText': reply})
 
+# ================== TWILIO SMS ENDPOINT ==================
+@app.route("/sms", methods=["POST"])
+def sms_reply():
+    """Receive SMS from Twilio, forward to Dialogflow, return reply."""
+    incoming_msg = request.form.get("Body", "")
+    from_number = request.form.get("From", "")
+
+    # Create Dialogflow session
+    session = session_client.session_path(PROJECT_ID, from_number)
+    text_input = dialogflow.TextInput(text=incoming_msg, language_code=LANGUAGE_CODE)
+    query_input = dialogflow.QueryInput(text=text_input)
+
+    try:
+        response = session_client.detect_intent(request={"session": session, "query_input": query_input})
+        reply = response.query_result.fulfillment_text or "Sorry, I didn’t understand that."
+    except Exception as e:
+        print(f"Dialogflow error: {e}")
+        reply = "⚠️ Error reaching chatbot service."
+
+    # Build TwiML response
+    twiml = MessagingResponse()
+    twiml.message(reply)
+    return Response(str(twiml), mimetype="application/xml")
 
 # ================== MAIN ==================
 if __name__ == '__main__':
