@@ -2,7 +2,7 @@ import json
 import requests
 from flask import Flask, request, jsonify, Response
 from twilio.twiml.messaging_response import MessagingResponse
-from google.cloud import dialogflow_v2 as dialogflow
+from google.cloud import dialogflow as dialogflow
 import os
 
 app = Flask(__name__)
