@@ -79,7 +79,10 @@ def get_who_outbreaks():
 
 def get_dialogflow_reply(user_id, text):
     """Send user input to Dialogflow and get response."""
-    session = session_client.session_path(PROJECT_ID, user_id)
+    # Clean session ID
+    safe_session = user_id.replace("whatsapp:", "").replace("+", "")
+
+    session = session_client.session_path(PROJECT_ID, "global", safe_session)
     text_input = dialogflow.TextInput(text=text, language_code=LANGUAGE_CODE)
     query_input = dialogflow.QueryInput(text=text_input)
 
@@ -91,6 +94,7 @@ def get_dialogflow_reply(user_id, text):
     except Exception as e:
         print(f"Dialogflow error: {e}")
         return "⚠️ Error reaching chatbot service."
+
 
 # ================== DIALOGFLOW WEBHOOK (used by Dialogflow itself) ==================
 @app.route('/webhook', methods=['POST'])
