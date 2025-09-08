@@ -82,7 +82,7 @@ def get_dialogflow_reply(user_id, text):
     # Clean session ID
     safe_session = user_id.replace("whatsapp:", "").replace("+", "")
 
-    session = session_client.session_path(testbot-sltu, "global")
+    session = session_client.session_path("testbot-sltu", "global",safe_session)
     text_input = dialogflow.TextInput(text=text, language_code=LANGUAGE_CODE)
     query_input = dialogflow.QueryInput(text=text_input)
 
