@@ -69,10 +69,18 @@ def find_disease_info(disease_name, info_type):
 def get_who_outbreaks():
     """Fetch latest WHO Disease Outbreak News items from WHO API."""
     try:
-        response = requests.get(WHO_API_URL, timeout=10)
+        headers = {"User-Agent": "Mozilla/5.0"}  # WHO sometimes blocks default requests
+        response = requests.get(WHO_API_URL, headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
-        return data.get("items", data)  # "items" contains the outbreak list
+
+        # WHO returns data under "value"
+        if "value" in data:
+            return data["value"]
+        elif "items" in data:  # fallback in case format changes
+            return data["items"]
+        else:
+            return []
     except Exception as e:
         print(f"Error fetching WHO outbreak data: {e}")
         return None
