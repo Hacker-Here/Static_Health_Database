@@ -7,24 +7,30 @@ from google.oauth2 import service_account
 app = Flask(__name__)
 
 # ---------- STATIC DATA URLs ----------
-SYNONYMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_names.json"
 SYMPTOMS_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_symptoms.json"
 PREVENTION_URL = "https://raw.githubusercontent.com/Hacker-Here/Static_Health_Database/main/disease_preventions.json"
 
 # ---------- WHO OUTBREAKS API ----------
-WHO_OUTBREAKS_URL = "https://www.who.int/api/emergencies/diseaseoutbreaknews"
+WHO_API_URL = (
+    "https://www.who.int/api/emergencies/diseaseoutbreaknews"
+    "?sf_provider=dynamicProvider372&sf_culture=en"
+    "&$orderby=PublicationDateAndTime%20desc"
+    "&$expand=EmergencyEvent"
+    "&$select=Title,TitleSuffix,OverrideTitle,UseOverrideTitle,regionscountries,"
+    "ItemDefaultUrl,FormattedDate,PublicationDateAndTime"
+    "&%24format=json&%24top=10&%24count=true"
+)
 
 # ---------- GOOGLE DIALOGFLOW CONFIG ----------
 PROJECT_ID = os.environ.get("DIALOGFLOW_PROJECT_ID", "")
 LANGUAGE_CODE = "en-US"
 
-credentials = None
-if "GOOGLE_CREDS_JSON" in os.environ:
-    creds_dict = json.loads(os.environ["GOOGLE_CREDS_JSON"])
-    credentials = service_account.Credentials.from_service_account_info(creds_dict)
-    session_client = dialogflow.SessionsClient(credentials=credentials)
-else:
+if "GOOGLE_CREDS_JSON" not in os.environ:
     raise Exception("❌ GOOGLE_CREDS_JSON not found in environment variables!")
+
+creds_dict = json.loads(os.environ["GOOGLE_CREDS_JSON"])
+credentials = service_account.Credentials.from_service_account_info(creds_dict)
+session_client = dialogflow.SessionsClient(credentials=credentials)
 
 # Cache for static JSON data
 data_cache = {}
@@ -63,7 +69,7 @@ def find_disease_info(disease_name, info_type):
 def get_who_outbreaks():
     """Fetch latest WHO Disease Outbreak News items from WHO API."""
     try:
-        response = requests.get(WHO_OUTBREAKS_URL, timeout=10)
+        response = requests.get(WHO_API_URL, timeout=10)
         response.raise_for_status()
         data = response.json()
         return data.get("items", data)  # "items" contains the outbreak list
@@ -71,7 +77,22 @@ def get_who_outbreaks():
         print(f"Error fetching WHO outbreak data: {e}")
         return None
 
-# ================== DIALOGFLOW WEBHOOK ==================
+def get_dialogflow_reply(user_id, text):
+    """Send user input to Dialogflow and get response."""
+    session = session_client.session_path(PROJECT_ID, user_id)
+    text_input = dialogflow.TextInput(text=text, language_code=LANGUAGE_CODE)
+    query_input = dialogflow.QueryInput(text=text_input)
+
+    try:
+        response = session_client.detect_intent(
+            request={"session": session, "query_input": query_input}
+        )
+        return response.query_result.fulfillment_text or "Sorry, I didn’t understand that."
+    except Exception as e:
+        print(f"Dialogflow error: {e}")
+        return "⚠️ Error reaching chatbot service."
+
+# ================== DIALOGFLOW WEBHOOK (used by Dialogflow itself) ==================
 @app.route('/webhook', methods=['POST'])
 def webhook():
     req = request.get_json(silent=True, force=True)
@@ -106,7 +127,7 @@ def webhook():
     elif intent in ['disease_outbreaks.general', 'disease_outbreaks.specific']:
         disease = None
         if params.get('disease-name'):
-            disease = params['disease-name'][0]  # Extract disease name if provided
+            disease = params['disease-name'][0]
 
         items = get_who_outbreaks()
         if not items:
@@ -125,28 +146,15 @@ def webhook():
 
     return jsonify({'fulfillmentText': reply})
 
-# ================== TWILIO SMS ENDPOINT ==================
-@app.route("/sms", methods=["POST"])
-def sms_reply():
-    """Receive SMS from Twilio, forward to Dialogflow, return reply."""
+# ================== TWILIO WHATSAPP ENDPOINT ==================
+@app.route("/whatsapp", methods=["POST"])
+def whatsapp_reply():
+    """Receive WhatsApp message from Twilio, forward to Dialogflow, return reply."""
     incoming_msg = request.form.get("Body", "")
     from_number = request.form.get("From", "")
 
-    # Create Dialogflow session
-    session = session_client.session_path(PROJECT_ID, from_number)
-    text_input = dialogflow.TextInput(text=incoming_msg, language_code=LANGUAGE_CODE)
-    query_input = dialogflow.QueryInput(text=text_input)
+    reply = get_dialogflow_reply(from_number, incoming_msg)
 
-    try:
-        response = session_client.detect_intent(
-            request={"session": session, "query_input": query_input}
-        )
-        reply = response.query_result.fulfillment_text or "Sorry, I didn’t understand that."
-    except Exception as e:
-        print(f"Dialogflow error: {e}")
-        reply = "⚠️ Error reaching chatbot service."
-
-    # Build TwiML response
     twiml = MessagingResponse()
     twiml.message(reply)
     return Response(str(twiml), mimetype="application/xml")
