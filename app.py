@@ -41,7 +41,7 @@ def get_data_from_github(url):
     if url in data_cache:
         return data_cache[url]
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         data_cache[url] = data
@@ -79,10 +79,11 @@ def get_who_outbreaks():
 
 def get_dialogflow_reply(user_id, text):
     """Send user input to Dialogflow and get response."""
-    # Clean session ID
     safe_session = user_id.replace("whatsapp:", "").replace("+", "")
 
-    session = session_client.session_path("testbot-sltu",safe_session)
+    # Use env PROJECT_ID, not hardcoded
+    session = session_client.session_path(PROJECT_ID, safe_session)
+
     text_input = dialogflow.TextInput(text=text, language_code=LANGUAGE_CODE)
     query_input = dialogflow.QueryInput(text=text_input)
 
@@ -96,7 +97,7 @@ def get_dialogflow_reply(user_id, text):
         return "⚠️ Error reaching chatbot service."
 
 
-# ================== DIALOGFLOW WEBHOOK (used by Dialogflow itself) ==================
+# ================== DIALOGFLOW WEBHOOK ==================
 @app.route('/webhook', methods=['POST'])
 def webhook():
     req = request.get_json(silent=True, force=True)
@@ -108,7 +109,7 @@ def webhook():
     # --------- Static Data: Symptoms ---------
     if intent == 'ask_symptoms':
         disease_list = params.get('disease-name')
-        if disease_list:
+        if disease_list and len(disease_list) > 0:
             disease = disease_list[0]
             symptoms = find_disease_info(disease, "symptoms")
             if symptoms:
@@ -119,7 +120,7 @@ def webhook():
     # --------- Static Data: Prevention ---------
     elif intent == 'ask_preventions':
         disease_list = params.get('disease-name')
-        if disease_list:
+        if disease_list and len(disease_list) > 0:
             disease = disease_list[0]
             prevention = find_disease_info(disease, "prevention")
             if prevention:
@@ -140,12 +141,12 @@ def webhook():
             if disease:  # Disease-specific outbreaks
                 filtered = [i for i in items if disease.lower() in i.get("Title", "").lower()]
                 if filtered:
-                    lines = [f"- {i['Title']} ({i.get('PublicationDate', '')[:10]})" for i in filtered[:3]]
+                    lines = [f"- {i['Title']} ({i.get('PublicationDateAndTime', '')[:10]})" for i in filtered[:3]]
                     reply = f"🌍 Latest {disease.title()} Outbreaks:\n" + "\n".join(lines)
                 else:
                     reply = f"No recent WHO outbreak news found for {disease.title()}."
             else:  # General outbreaks
-                lines = [f"- {i['Title']} ({i.get('PublicationDate', '')[:10]})" for i in items[:3]]
+                lines = [f"- {i['Title']} ({i.get('PublicationDateAndTime', '')[:10]})" for i in items[:3]]
                 reply = "🌍 Latest WHO Outbreaks:\n" + "\n".join(lines)
 
     return jsonify({'fulfillmentText': reply})
