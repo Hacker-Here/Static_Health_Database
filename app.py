@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import re
 from flask import Flask, request, jsonify, Response
 from twilio.twiml.messaging_response import MessagingResponse
 from google.cloud import dialogflow_v2 as dialogflow
@@ -99,6 +100,10 @@ def get_dialogflow_reply(user_id, text):
         response = session_client.detect_intent(
             request={"session": session, "query_input": query_input}
         )
+        # Debugging logs
+        print("Dialogflow session:", session)
+        print("Detected intent:", response.query_result.intent.display_name)
+        print("Fulfillment text:", response.query_result.fulfillment_text)
         return response.query_result.fulfillment_text or "Sorry, I didn’t understand that."
     except Exception as e:
         print(f"Dialogflow error: {e}")
@@ -108,14 +113,32 @@ def get_dialogflow_reply(user_id, text):
 @app.route("/twilio", methods=["POST"])
 def whatsapp_reply():
     """Receive WhatsApp message from Twilio, forward to Dialogflow, return reply."""
-    incoming_msg = request.form.get("Body", "")
-    from_number = request.form.get("From", "")
+    try:
+        incoming_msg = request.form.get("Body", "")
+        from_number = request.form.get("From", "")
 
-    reply = get_dialogflow_reply(from_number, incoming_msg)
+        if not incoming_msg:
+            reply_text = "Please type something to get information."
+        else:
+            # Clean incoming message
+            incoming_msg_clean = re.sub(r'[\r\n]+', ' ', incoming_msg)
+            incoming_msg_clean = re.sub(r'\s+', ' ', incoming_msg_clean).strip()
 
-    twiml = MessagingResponse()
-    twiml.message(reply)
-    return Response(str(twiml), mimetype="application/xml")
+            print("From WhatsApp:", from_number)
+            print("Original message:", incoming_msg)
+            print("Cleaned message:", incoming_msg_clean)
+
+            reply_text = get_dialogflow_reply(from_number, incoming_msg_clean)
+
+        twiml = MessagingResponse()
+        twiml.message(reply_text)
+        return Response(str(twiml), mimetype="application/xml")
+
+    except Exception as e:
+        print("Twilio webhook general error:", e)
+        twiml = MessagingResponse()
+        twiml.message("⚠️ Something went wrong on the server.")
+        return Response(str(twiml), mimetype="application/xml")
 
 # ================== DIALOGFLOW WEBHOOK ==================
 @app.route('/webhook', methods=['POST'])
@@ -157,7 +180,7 @@ def webhook():
             reply = "⚠️ Unable to fetch outbreak data right now."
         else:
             if disease:
-                filtered = [i for i in items if disease.lower() in i]
+                filtered = [i for i in items if disease.lower() in i.lower()]
                 if filtered:
                     reply = f"🌍 Latest {disease.title()} outbreaks:\n\n" + "\n\n".join(filtered[:3])
                 else:
