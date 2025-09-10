@@ -105,7 +105,7 @@ def get_dialogflow_reply(user_id, text):
         return "⚠️ Error reaching chatbot service."
 
 # ================== TWILIO WHATSAPP ENDPOINT ==================
-@app.route("/whatsapp", methods=["POST"])
+@app.route("/twilio", methods=["POST"])
 def whatsapp_reply():
     """Receive WhatsApp message from Twilio, forward to Dialogflow, return reply."""
     incoming_msg = request.form.get("Body", "")
