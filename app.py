@@ -72,50 +72,6 @@ def get_diseases_by_symptom(symptom):
     mapping_data = fetch_json(MAPPING_URL)
     return mapping_data.get(symptom.lower(), [])
 
-def process_disease_query(user_input, mode="both"):
-    """
-    Process disease query and return response text.
-    mode = "symptoms" | "preventions" | "both"
-    """
-    diseases_data = fetch_json(DISEASES_URL)
-    disease_key = find_disease_key(user_input, diseases_data)
-    if not disease_key:
-        disease_key = extract_disease_from_text(user_input)
-
-    if disease_key:
-        symptoms = get_symptoms(disease_key)
-        preventions = get_preventions(disease_key)
-
-        if mode == "symptoms":
-            return (
-                f"🤒 Symptoms of {disease_key}: {', '.join(symptoms)}."
-                if symptoms
-                else f"Sorry, I don’t have symptom info for {disease_key}."
-            )
-
-        elif mode == "preventions":
-            return (
-                f"🛡 Prevention for {disease_key}: {', '.join(preventions)}."
-                if preventions
-                else f"Sorry, I don’t have prevention info for {disease_key}."
-            )
-
-        else:  # both
-            response = f"Here’s what I found about {disease_key}:"
-            response += (
-                f"\n🤒 Symptoms: {', '.join(symptoms)}."
-                if symptoms
-                else "\n(No symptoms data available.)"
-            )
-            response += (
-                f"\n🛡 Prevention: {', '.join(preventions)}"
-                if preventions
-                else "\n(No prevention info available.)"
-            )
-            return response
-    else:
-        return f"Sorry, I do not have information about '{user_input}'."
-
 def process_symptom_query(symptoms_list):
     """Process symptom query and return possible diseases (multi-symptom support, case-insensitive)."""
     mapping_data = fetch_json(MAPPING_URL)
@@ -181,10 +137,18 @@ def webhook():
                 disease_input = disease_input[0]
 
             if intent == "symptoms_info":
-                response_text = process_disease_query(disease_input, mode="symptoms")
+                symptoms = get_symptoms(disease_input)
+                if symptoms:
+                    response_text = f"🤒 Symptoms of {disease_input}: {', '.join(symptoms)}"
+                else:
+                    response_text = f"Sorry, I don’t have symptom info for {disease_input}."
 
             elif intent == "preventions_info":
-                response_text = process_disease_query(disease_input, mode="preventions")
+                preventions = get_preventions(disease_input)
+                if preventions:
+                    response_text = f"🛡 Prevention for {disease_input}: {', '.join(preventions)}"
+                else:
+                    response_text = f"Sorry, I don’t have prevention info for {disease_input}."
 
             else:
                 response_text = f"Please ask either about symptoms or preventions of {disease_input}."
@@ -211,27 +175,27 @@ def webhook():
 def twilio_webhook():
     """Webhook for WhatsApp/SMS via Twilio."""
     try:
-        incoming_msg = request.form.get("Body", "").strip().lower()
+        incoming_msg = request.form.get("Body", "").strip()
 
         if not incoming_msg:
             reply = "Please enter a disease name or symptom to get info."
         else:
-            if "symptom" in incoming_msg:
-                # extract disease name
-                disease = incoming_msg.replace("symptom", "").replace("symptoms", "").strip()
-                reply = process_disease_query(disease, mode="symptoms")
-            elif "prevention" in incoming_msg:
-                disease = incoming_msg.replace("prevention", "").replace("preventions", "").strip()
-                reply = process_disease_query(disease, mode="preventions")
+            # First try to get symptoms
+            symptoms = get_symptoms(incoming_msg)
+            if symptoms:
+                reply = f"🤒 Symptoms of {incoming_msg}: {', '.join(symptoms)}"
             else:
-                # Default: try full disease info
-                reply = process_disease_query(incoming_msg, mode="both")
-
-                # If not found, try symptom-based disease detection
-                if "Sorry, I do not have information" in reply:
-                    symptoms = extract_symptoms_from_text(incoming_msg)
-                    if symptoms:
-                        reply = process_symptom_query(symptoms)
+                # If no symptoms, try preventions
+                preventions = get_preventions(incoming_msg)
+                if preventions:
+                    reply = f"🛡 Prevention for {incoming_msg}: {', '.join(preventions)}"
+                else:
+                    # If neither found, try matching with symptoms-to-diseases mapping
+                    detected_symptoms = extract_symptoms_from_text(incoming_msg)
+                    if detected_symptoms:
+                        reply = process_symptom_query(detected_symptoms)
+                    else:
+                        reply = f"Sorry, I do not have information about '{incoming_msg}'."
 
         # TwiML response
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
