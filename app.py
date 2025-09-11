@@ -138,17 +138,17 @@ def webhook():
 
             if intent == "symptoms_info":
                 symptoms = get_symptoms(disease_input)
-                if symptoms:
-                    response_text = f"🤒 Symptoms of {disease_input}: {', '.join(symptoms)}"
-                else:
-                    response_text = f"Sorry, I don’t have symptom info for {disease_input}."
+                response_text = (
+                    f"🤒 Symptoms of {disease_input}: {', '.join(symptoms)}"
+                    if symptoms else f"Sorry, I don’t have symptom info for {disease_input}."
+                )
 
             elif intent == "preventions_info":
                 preventions = get_preventions(disease_input)
-                if preventions:
-                    response_text = f"🛡 Prevention for {disease_input}: {', '.join(preventions)}"
-                else:
-                    response_text = f"Sorry, I don’t have prevention info for {disease_input}."
+                response_text = (
+                    f"🛡 Prevention for {disease_input}: {', '.join(preventions)}"
+                    if preventions else f"Sorry, I don’t have prevention info for {disease_input}."
+                )
 
             else:
                 response_text = f"Please ask either about symptoms or preventions of {disease_input}."
@@ -180,22 +180,29 @@ def twilio_webhook():
         if not incoming_msg:
             reply = "Please enter a disease name or symptom to get info."
         else:
-            # First try to get symptoms
-            symptoms = get_symptoms(incoming_msg)
-            if symptoms:
-                reply = f"🤒 Symptoms of {incoming_msg}: {', '.join(symptoms)}"
+            # First assume direct disease match
+            disease = incoming_msg
+            symptoms = get_symptoms(disease)
+            preventions = get_preventions(disease)
+
+            if not symptoms and not preventions:
+                # Try extracting disease from free text
+                disease = extract_disease_from_text(incoming_msg)
+                if disease:
+                    symptoms = get_symptoms(disease)
+                    preventions = get_preventions(disease)
+
+            if disease and symptoms:
+                reply = f"🤒 Symptoms of {disease}: {', '.join(symptoms)}"
+            elif disease and preventions:
+                reply = f"🛡 Prevention for {disease}: {', '.join(preventions)}"
             else:
-                # If no symptoms, try preventions
-                preventions = get_preventions(incoming_msg)
-                if preventions:
-                    reply = f"🛡 Prevention for {incoming_msg}: {', '.join(preventions)}"
+                # If neither found, try matching with symptoms-to-diseases mapping
+                detected_symptoms = extract_symptoms_from_text(incoming_msg)
+                if detected_symptoms:
+                    reply = process_symptom_query(detected_symptoms)
                 else:
-                    # If neither found, try matching with symptoms-to-diseases mapping
-                    detected_symptoms = extract_symptoms_from_text(incoming_msg)
-                    if detected_symptoms:
-                        reply = process_symptom_query(detected_symptoms)
-                    else:
-                        reply = f"Sorry, I do not have information about '{incoming_msg}'."
+                    reply = f"Sorry, I do not have information about '{incoming_msg}'."
 
         # TwiML response
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
