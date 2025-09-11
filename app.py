@@ -26,7 +26,7 @@ WHO_API_URL = (
 
 # ---------- GOOGLE DIALOGFLOW CONFIG ----------
 PROJECT_ID = os.environ.get("DIALOGFLOW_PROJECT_ID", "")
-LANGUAGE_CODE = "en-US"
+LANGUAGE_CODE = "en"
 
 if "GOOGLE_CREDS_JSON" not in os.environ:
     raise Exception("❌ GOOGLE_CREDS_JSON not found in environment variables!")
