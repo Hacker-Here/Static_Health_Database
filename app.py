@@ -143,9 +143,12 @@ def webhook():
         req = request.get_json(force=True)
         print("Dialogflow Request:", json.dumps(req, indent=2))  # DEBUG LOG
 
-        intent = req.get("queryResult", {}).get("intent", {}).get("displayName", "")
-        params = req.get("queryResult", {}).get("parameters", {})
+        # Normalize intent name (lowercase + underscores)
+        intent_raw = req.get("queryResult", {}).get("intent", {}).get("displayName", "")
+        intent = intent_raw.strip().lower().replace(" ", "_")
+        print("DEBUG: Intent =", intent)
 
+        params = req.get("queryResult", {}).get("parameters", {})
         response_text = "Sorry, I could not find information."
 
         # Case 1: Disease info
